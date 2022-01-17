@@ -1,0 +1,7 @@
+[core]
+    remote = sag_cloud
+['remote "sag_cloud"']
+    url = webdavs://webdav.cloud.mail.ru/dvc/MedNormalization
+    user = sag111@mail.ru
+    ask_password = true
+    timeout = 120
