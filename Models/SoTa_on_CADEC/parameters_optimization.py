@@ -33,7 +33,17 @@ class CADEC_SoTa_Optimizer:
         self.initial_model = model
         self.train_data = train_data
         self.test_data = test_data
-        self.hyperparam_space = {'lr': hp.uniform('lr', *hyperparam_space['lr']),
+        if type(hyperparam_space['batch_size'])==int:
+            print('Only one choice of batch size have given, program will optimize only lr')
+            self.fixed_batch_size = hyperparam_space['batch_size']
+            self.hyperparam_space = {'lr': hp.uniform('lr', *hyperparam_space['lr'])}
+        elif len(hyperparam_space['batch_size'])==1:
+            print('Only one choice of batch size have given, program will optimize only lr')
+            self.fixed_batch_size = hyperparam_space['batch_size'][0]
+            self.hyperparam_space = {'lr': hp.uniform('lr', *hyperparam_space['lr'])}
+        else:
+            self.fixed_batch_size = False
+            self.hyperparam_space = {'lr': hp.uniform('lr', *hyperparam_space['lr']),
                                   'batch_size': hp.choice('batch_size', hyperparam_space['batch_size'])}
         self.initial_hyperparam_space = hyperparam_space
         self.device = 'cuda' if use_cuda else 'cpu'
@@ -44,13 +54,14 @@ class CADEC_SoTa_Optimizer:
             self.counter=0
         
     def train_model(self, args)->dict:
-        lr, batch_size = args['lr'], int(args['batch_size'])
+        if self.fixed_batch_size:
+            batch_size = self.fixed_batch_size
+        else:
+            batch_size = int(args['batch_size'])
+        lr = args['lr']
         #выставляем одни и те же настройки для детерминированности
-        os.environ["CUBLAS_WORKSPACE_CONFIG"]=":16:8"
-        torch.use_deterministic_algorithms(mode=False)
         np.random.seed(0)
         torch.manual_seed(0)
-        torch.backends.cudnn.benchmark = False
         
         #каждый раз переинициалазируем объекты
         model = deepcopy(self.initial_model)
@@ -110,8 +121,9 @@ class CADEC_SoTa_Optimizer:
         algo=tpe.suggest, # Optimization algorithm (representative TPE)
         max_evals=self.max_evals # Number of optimization attempts
        )
-        choice_index = self.best_hyperparams['batch_size']
-        self.best_hyperparams['batch_size'] = self.initial_hyperparam_space['batch_size'][choice_index]
+        if not self.fixed_batch_size:
+            choice_index = self.best_hyperparams['batch_size']
+            self.best_hyperparams['batch_size'] = self.initial_hyperparam_space['batch_size'][choice_index]
         print('Best hyperparams: \n')
         print(self.best_hyperparams)
         #для обнуления счетчика запусков
