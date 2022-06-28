@@ -215,3 +215,57 @@ def parse_json_ds(X_train, X_test, CV, X_val=None, CV_with_conceptless=None, add
         if add_context:
             ds['test_with_conceptless']['sentences'] = test_sentences_with_conceptless
     return ds, log_markup_errors
+    
+def CADEC_format_to_RDRS_format(CV, cadec_path='../../Data/Raw/CADEC_origin/'):
+    '''Функция преобразующая формат CADEC в формат RDRS (Возвращает список отзывов)'''
+    cadec_text_path = os.path.join(cadec_path, 'text') + '/'
+    cadec_meddra_path = os.path.join(cadec_path, 'meddra') + '/'
+    all_reviews = []
+    for ann_file in os.listdir(cadec_meddra_path):
+        ann_filename, ann_file_extension = os.path.splitext(cadec_meddra_path + ann_file)
+        if ann_file_extension != '.ann':
+            continue
+        new_rev = {'meta': {'fileName': ann_file}, 
+                   'raw': '', 
+                   'objects': {'MedEntity': []}}
+        text_file_path = cadec_text_path + ann_file[:-4] + '.txt'
+        ann_file_path = cadec_meddra_path + ann_file
+        with open(text_file_path) as f:
+            review_text = f.read()
+        new_rev['raw'] = review_text
+        i=0
+        with open(ann_file_path) as f:
+            for line in f:
+                if line=='':
+                    continue
+                line = re.sub('\s\s+', '\t', line)
+                ent_id, markup_pt_inf, ent_text = line.split('\t')
+                markup_pt_inf = re.sub('\s\+\s|/', '+', markup_pt_inf)
+                
+                try:
+                    pt_id = '|'.join(map(lambda x: CV.meddra_code_to_meddra_term[x], \
+                                     markup_pt_inf.split(' ')[0].split('+')))
+                except KeyError:
+                    continue
+                spans = []
+                markup_pt_inf = re.sub('^\+*(\d{8,9}|CONCEPT_LESS)(\+(\d{8,9}|CONCEPT_LESS))*\s|^CONCEPT_LESS\s', '', markup_pt_inf)
+                if markup_pt_inf.find(';')>=0:
+                    for ent_span in markup_pt_inf.split(';'):
+                        ent_begin, ent_end =  ent_span.split(' ')
+                        ent_begin, ent_end = int(ent_begin), int(ent_end) 
+                        spans.append({'begin': ent_begin, 
+                                      'end': ent_end })
+                else:
+                    ent_begin, ent_end = markup_pt_inf.split(' ')
+                    spans.append({
+                        'begin': int(ent_begin), 
+                        'end': int(ent_end)
+                    })
+                new_rev['objects']['MedEntity'].append({
+                    'xmiID': ent_id,
+                    'spans': spans,
+                    'text': ent_text.strip('\n'),
+                    'MedDRA': pt_id if pt_id!='CONCEPT_LESS' else ''
+                })
+        all_reviews.append(new_rev)
+    return all_reviews
