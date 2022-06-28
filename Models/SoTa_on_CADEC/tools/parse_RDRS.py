@@ -269,3 +269,39 @@ def CADEC_format_to_RDRS_format(CV, cadec_path='../../Data/Raw/CADEC_origin/'):
                 })
         all_reviews.append(new_rev)
     return all_reviews
+    
+def sort_concepts_func(curr_ds):
+        '''
+        Концепты в разметке, если их у упоминания несколько, идут через '|'
+        В модели мы берем один концепт, самый первый в списке
+        У разных упоминаний может быть один общий концепт, но в силу порядка следования через '|'
+        Модель может не увидеть этот один общий концепт, что является упущением разметки
+        Функция правит разметку так, чтобы общие концепты всегда стояли на первом месте
+        '''
+
+        all_concepts = []
+
+        for rev in curr_ds:
+            for ent in rev['objects']['MedEntity']:
+                if 'MedDRA' in ent.keys() and ent['MedDRA']!='':
+                    all_concepts.extend(ent['MedDRA'].split('|'))
+        
+        concepts_popularity = Counter(all_concepts)
+        concepts_popularity = {k:v for k,v in sorted(concepts_popularity.items(), reverse=True, key=lambda x: x[1])}
+        
+        already_processed_mentions = set()
+        for concept in tqdm(concepts_popularity):
+            for i, rev in enumerate(curr_ds):
+                for j, ent in enumerate(rev['objects']['MedEntity']):
+                    if str(i)+'_'+str(j) in already_processed_mentions:
+                        continue
+                    if 'MedDRA' in ent.keys() and ent['MedDRA'].find('|')>=0:
+                        all_phrase_concepts = ent['MedDRA'].split('|')
+                        if concept in all_phrase_concepts:
+                            if all_phrase_concepts.index(concept)!=0:
+                                all_phrase_concepts.remove(concept)
+                                all_phrase_concepts.insert(0,concept)
+                                ent['MedDRA'] = '|'.join(all_phrase_concepts)
+                            already_processed_mentions.add(str(i)+'_'+str(j))
+                        
+        return curr_ds
