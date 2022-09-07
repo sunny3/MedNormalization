@@ -209,28 +209,6 @@ class MeddraParser():
                 print('Parsing %ss, creating trees'%curr_depth_level)
                 setattr(self, curr_depth_level+'_root_nodes', self.CreateTreeList(DictMapChain, RelevantCodesSet=remaining_codes_set))
         #Таким образом предыдущим циклом мы охватили все pt коды
-        
-    def CreateUpperTermsMarkupToPT(self):
-        #линкинг верхних терминов к концептам PT
-        #один верхнеуровневый термин может иметь несколько различных PT концептов
-        all_df_data = []
-        print('Making PT markup for all upper terms')
-        for pt_code in tqdm(self.ptcodes): #[:200]
-            res = self.GetTree(pt_code, level='pt')
-            if res is None:
-                continue
-            PTcodeNode = res
-            for CodeNode in PTcodeNode.path:
-                if CodeNode.depth_level=='ptcode':
-                    continue
-                all_df_data.append([CodeNode.depth_level[:-4], 
-                                   self.__dict__[CodeNode.depth_level + '_to_' + CodeNode.depth_level[:-4]][CodeNode.name],
-                                   CodeNode.name,
-                                   self.ptcode_to_pt[pt_code],
-                                   pt_code
-                                   ])
-        df = pd.DataFrame(all_df_data, columns=['MedDRA section', 'term', 'origin code', 'pt term', 'pt code'])
-        return df
     
     def WalkUpper(self, code, level=None):
         #возвращает путь от нижнего кода code к верхнему коду soc
