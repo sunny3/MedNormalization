@@ -3,8 +3,8 @@ from collections import ChainMap
 from anytree import Node, RenderTree, findall_by_attr, Walker
 from tqdm import tqdm
 import pandas as pd
-#Класс для парсиннга medDRA и UMLS, обеспечивает линкинг кодов друг к другу
-#Структура medDRA по вложенности llt->pt->hlt->hlgt->soc
+#Class for parsing medDRA and UMLS, providing code linking between them
+#This class facilitates the parsing of medDRA and UMLS, and enables the linking of codes between the two. The medDRA structure follows a nesting hierarchy of llt->pt->hlt->hlgt->soc.
 class MeddraParser():
     def __init__(self, meddra_path, umls_path=None, lang='ENG'):
         assert lang in ['ENG', 'RUS'], "Choose 'RUS' or 'ENG'"
@@ -40,7 +40,7 @@ class MeddraParser():
         self.soc_to_soccode = {}
         self.hlgtcode_to_soccode = {}
         
-        #если был дан umls - парсим и umls
+        #if umls_path defined, so we parse also UMLS
         if umls_path:
             self.umls_path = umls_path
             self.umlscode_to_ptcode = {}
@@ -61,8 +61,7 @@ class MeddraParser():
 
     def Load(self):
         """
-        собираем из медры только то, что надо, а именно:
-        - все пт коды для быстрой проверки, является ли найденный где-то код PT кодом
+        Fill mapping dictionaries
         """
         with open(self.meddra_path_llt, "r", encoding='utf-8') as f:
             for llt_line in f:
@@ -124,8 +123,6 @@ class MeddraParser():
                     meddra_term = umls_line_values[14]
                     self.__dict__[attr_name_term_matching] = meddra_term
                     self.__dict__[attr_name_term_matching] = meddra_code
-    #def CreateMeddraChainMap(self):
-    #    self.MeddraCodesChainMap = ChainMap(self.lltcode_to_ptcode, self.ptcode_to_hltcode, self.hltcode_to_hlgtcode, self.hlgtcode_to_soccode)
         
     def RecursiveDescent(self, DictMapChain, nodes):
         if DictMapChain == []:
@@ -139,7 +136,7 @@ class MeddraParser():
             return self.RecursiveDescent(DictMapChain[:-1], another_node_children)
         
     def CreateTreeList(self, DictMapChain, RelevantCodesSet = None):
-        #собираем список всех корневых кодов, будем строить от них деревья в цикле
+        # We collect a list of all root codes; we will build trees from them in a loop.
         root_nodes = []
         CurrMapDict = DictMapChain[-1]
         root_depth_level = CurrMapDict.split('_')[2]
@@ -147,7 +144,7 @@ class MeddraParser():
         if RelevantCodesSet is None:
             RelevantCodesSet = set(self.__dict__[CurrMapDict].values())
         for root_node in tqdm(RelevantCodesSet):
-            #собираем все ключи соответствующие корневому коду MedDRA
+            #We collect all keys corresponding to the root code of MedDRA.
             node_children = [Node(k, depth_level = children_depth_level) for k in self.__dict__[CurrMapDict].keys() \
                              if self.__dict__[CurrMapDict][k]==root_node]
             root_node = Node(root_node, depth_level=root_depth_level)
@@ -157,7 +154,7 @@ class MeddraParser():
         return root_nodes
     
     def GetTree(self, code, level=None):
-        #возвращает node кода с заданным уровнем (если level задан) c самым длинным путем, что гарантирует полный охват от нижнего кода до верхнего
+        # It returns the node of a code with the specified level (if level is provided) along with the longest path, ensuring complete coverage from the lowest code to the highest.
         assert level in [None, 'llt', 'pt', 'hlt']
         result_nodes_varients = []
         for root_depth_level in self.root_codes_depth_levels:
@@ -184,7 +181,7 @@ class MeddraParser():
        
         
     def CreateMeddraTree(self):
-        #Парсит всю MedDRA, записывая корневые коды MedDRA в атрибуты класса с приставкой _root_nodes
+        # Parses the entire MedDRA, writing the root codes of MedDRA into class attributes with the prefix '_root_nodes'.
         FullDictMapChain = ['ptcode_to_hltcode', 'hltcode_to_hlgtcode', 'hlgtcode_to_soccode'] #'lltcode_to_ptcode', 
         self.root_codes_depth_levels = []
         #начнем строить деревья с soc кодов до llt кодов
@@ -194,8 +191,8 @@ class MeddraParser():
         self.root_codes_depth_levels.append(root_depth_level)
         print('Parsing %ss, creating trees'%root_depth_level)
         setattr(self, root_depth_level+'_root_nodes', self.CreateTreeList(DictMapChain))
-        #На каждой новой итерации цикла добавляются деревья от кодов, которые не попали в предыдущие деревья
-        for i in range(1, 3): #цифра 3, потому что нас интересуют все коды до pt, pt коды встречаются в 3ем MapDict от конца
+        # On each new iteration of the loop, trees are added from codes that were not included in the previous trees.
+        for i in range(1, 3): # The number 3, because we are interested in all codes up to PT level, and PT codes are encountered in the third MapDict from the end."
             DictMapChain = FullDictMapChain[:-i]
             CurrMapDict = FullDictMapChain[:-i][-1]
             remaining_codes_set = set()
@@ -208,10 +205,10 @@ class MeddraParser():
                 self.root_codes_depth_levels.append(curr_depth_level)
                 print('Parsing %ss, creating trees'%curr_depth_level)
                 setattr(self, curr_depth_level+'_root_nodes', self.CreateTreeList(DictMapChain, RelevantCodesSet=remaining_codes_set))
-        #Таким образом предыдущим циклом мы охватили все pt коды
+        # Thus, with the previous loop, we have covered all PT codes.
     
     def WalkUpper(self, code, level=None):
-        #возвращает путь от нижнего кода code к верхнему коду soc
+        # It returns the path from the lower code 'code' to the upper code 'soc'.
         try:
             soccode_node, code_node = self.GetTree(code, level)
         except:
@@ -222,8 +219,7 @@ class MeddraParser():
         return all_path_codes
         
     def force_umlscode_to_ptcode(self, umls_code):
-        #если код umls не приводится сразу к pt
-        #тогда пробуем привести к llt, затем к pt
+        #If the UMLS code cannot be directly converted to PT, we try to convert it to LLT first and then to PT.
         if umls_code in self.umlscode_to_ptcode.keys():
             return self.umlscode_to_ptcode[umls_code]
         elif umls_code in self.umlscode_to_lltcode.keys():

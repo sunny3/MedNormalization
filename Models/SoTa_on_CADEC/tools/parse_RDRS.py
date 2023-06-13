@@ -11,22 +11,22 @@ def parse_RDRS(RDRS_path):
     return ds
 
 def split_sentences(message, sent_tokenizer):
-    '''Возвращает предложения и их спаны'''
+    '''Return sentences and their spans'''
     text_rows = message.split('\n')
-    assert type(sent_tokenizer) == nltk.tokenize.PunktSentenceTokenizer, 'В качестве sent_tokenizer поддерживается только PunktSentenceTokenizer'
-    #к сожалению PunktSentenceTokenizer не токенизирует по \n, приходится выкручиваться
+    assert type(sent_tokenizer) == nltk.tokenize.PunktSentenceTokenizer, 'Only PunktSentenceTokenizer supported as sent_tokenizer'
+    #unfortunately PunktSentenceTokenizer does not tokenize by \n, you have to get out
     text_rows_tokenized = [[list(sent_span) for sent_span in sent_tokenizer.span_tokenize(text_row)] for text_row in text_rows]
     empty_rows = 0
     for i, tokenized_row in enumerate(text_rows_tokenized):
         if i==0:
             continue
-        #восстанавливаем правильные спаны
+        #restore correct spans
         if tokenized_row==[]:
-            #в таком случае два \n шли подряд
+            #in case 2 \n in a row
             tokenized_row.append(['not a sent', text_rows_tokenized[i-1][-1][-1]+1])
             continue
         for sent in text_rows_tokenized[i]:
-            sent[0]+=text_rows_tokenized[i-1][-1][-1]+1 #индекс самой последней буквы последнего предложения + 1 на знак \n
+            sent[0]+=text_rows_tokenized[i-1][-1][-1]+1 #index of the last letter of the last sentence + 1 (for \n)
             sent[1]+=text_rows_tokenized[i-1][-1][-1]+1
     doc_sentences_spans = list(filter(lambda x: True if x[0]!='not a sent' else False, sum(text_rows_tokenized, [])))
     doc_sentences = []
@@ -38,7 +38,7 @@ def split_sentences(message, sent_tokenizer):
     return doc_sentences_spans, doc_sentences
 
 def parse_json_ds(X_train, X_test, CV, X_val=None, CV_with_conceptless=None, add_context=False):
-    log_markup_errors = [] #сущности, которые не нашлись в MedDRA
+    log_markup_errors = [] #entities not found in MedDRA
     train_concepts, train_phrases, train_ids = [], [], []
     test_concepts, test_phrases, test_ids = [], [], []
     if CV_with_conceptless is not None:
@@ -61,14 +61,14 @@ def parse_json_ds(X_train, X_test, CV, X_val=None, CV_with_conceptless=None, add
                 if ent['MedDRA']=='':
                     continue
                 if add_context:
-                    #ищем в каком предложении и находим спаны сущности в этом предложении
+                    #look phrase's sentence and find the spans of the entity in this sentence
                     ent_begin = ent['spans'][0]['begin']
                     ent_end = ent['spans'][-1]['end']
                     for sent_id, sentence_span in enumerate(doc_sentences_spans):
                         if ent_begin >= sentence_span[0] and ent_end <= sentence_span[1]:
                             break
                     else:
-                        #предложение с сущностью не найдено, не удалось установить его границы
+                        #sentence with entity not found, unable to set its bounds
                         log_markup_errors.append({'review_id': review['meta']['fileName'], 
                                                   'entity_id': ent['xmiID'],
                                                   'entity_text': ent['text'],
@@ -99,16 +99,16 @@ def parse_json_ds(X_train, X_test, CV, X_val=None, CV_with_conceptless=None, add
             doc_sentences_spans, doc_sentences = split_sentences(review['raw'], sent_tokenizer)
         for ent in review['objects']['MedEntity']:
             if 'MedDRA' in ent.keys():
-                #первым делом ищем предложение с сущностью
+                #first of all, we are looking for a sentence with this entity
                 if add_context:
-                    #ищем в каком предложении и находим спаны сущности в этом предложении
+                    #look phrase's sentence and find the spans of the entity in this sentence
                     ent_begin = ent['spans'][0]['begin']
                     ent_end = ent['spans'][-1]['end']
                     for sent_id, sentence_span in enumerate(doc_sentences_spans):
                         if ent_begin >= sentence_span[0] and ent_end <= sentence_span[1]:
                             break
                     else:
-                        #предложение с сущностью не найдено, не удалось установить его границы
+                        #in case sentence with entity was not found
                         log_markup_errors.append({'review_id': review['meta']['fileName'], 
                                                   'entity_id': ent['xmiID'],
                                                   'entity_text': ent['text'],
@@ -118,7 +118,7 @@ def parse_json_ds(X_train, X_test, CV, X_val=None, CV_with_conceptless=None, add
                         continue
                     phrase_spans_in_sentence = [[span['begin'] - sentence_span[0], 
                                                 span['end'] - sentence_span[0]] for span in ent['spans']]
-                #ветка с тестом с conceptless
+                #conceptless branch
                 if ent['MedDRA']=='':
                     ent['MedDRA'] = 'CONCEPT_LESS'
                 if CV_with_conceptless is not None:
@@ -137,10 +137,9 @@ def parse_json_ds(X_train, X_test, CV, X_val=None, CV_with_conceptless=None, add
                                                   'entity_concept_term': ent['MedDRA'],
                                                   'error': 'no match in CV_with_concepless meddra terms'})
                 if ent['MedDRA']=='CONCEPT_LESS':
-                    #уже произошла обработка предыдущей веткой, продолжаем
                     ent['MedDRA'] = ''
                     continue
-                #наконец обычная ветка с тестом, такая же как в трейне
+                #finally, a regular branch with a test, the same as in the train
                 try:
                     test_concepts.append(CV.meddra_term_to_meddra_code[ent['MedDRA'].split('|')[0]])
                 except KeyError:
@@ -164,16 +163,16 @@ def parse_json_ds(X_train, X_test, CV, X_val=None, CV_with_conceptless=None, add
                 if 'MedDRA' in ent.keys():
                     if ent['MedDRA']=='':
                         continue
-                    #первым делом ищем предложение
+                    #first of all, we are looking for a sentence with this entity
                     if add_context:
-                        #ищем в каком предложении и находим спаны сущности в этом предложении
+                        #look phrase's sentence and find the spans of the entity in this sentence
                         ent_begin = ent['spans'][0]['begin']
                         ent_end = ent['spans'][-1]['end']
                         for sent_id, sentence_span in enumerate(doc_sentences_spans):
                             if ent_begin >= sentence_span[0] and ent_end <= sentence_span[1]:
                                 break
                         else:
-                            #предложение с сущностью не найдено, не удалось установить его границы
+                            #in case sentence with entity was not found
                             log_markup_errors.append({'review_id': review['meta']['fileName'], 
                                                       'entity_id': ent['xmiID'],
                                                       'entity_text': ent['text'],
@@ -217,7 +216,7 @@ def parse_json_ds(X_train, X_test, CV, X_val=None, CV_with_conceptless=None, add
     return ds, log_markup_errors
     
 def CADEC_format_to_RDRS_format(CV, cadec_path='../../Data/Raw/CADEC_origin/'):
-    '''Функция преобразующая формат CADEC в формат RDRS (Возвращает список отзывов)'''
+    '''Function converting CADEC format to RDRS format (Returns list of reviews)'''
     cadec_text_path = os.path.join(cadec_path, 'text') + '/'
     cadec_meddra_path = os.path.join(cadec_path, 'meddra') + '/'
     all_reviews = []
@@ -272,11 +271,11 @@ def CADEC_format_to_RDRS_format(CV, cadec_path='../../Data/Raw/CADEC_origin/'):
     
 def sort_concepts_func(curr_ds):
         '''
-        Концепты в разметке, если их у упоминания несколько, идут через '|'
-        В модели мы берем один концепт, самый первый в списке
-        У разных упоминаний может быть один общий концепт, но в силу порядка следования через '|'
-        Модель может не увидеть этот один общий концепт, что является упущением разметки
-        Функция правит разметку так, чтобы общие концепты всегда стояли на первом месте
+        Concepts in the markup, if there are multiple mentions, are separated by '|'
+        In the model, we take one concept, the first one in the list
+        Different mentions can share a common concept, but due to the '|' separation,
+        the model may not recognize this shared concept, which is a labeling omission
+        The function corrects the markup so that shared concepts always come first
         '''
 
         all_concepts = []

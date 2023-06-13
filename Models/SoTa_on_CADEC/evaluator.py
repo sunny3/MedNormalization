@@ -4,13 +4,13 @@ import numpy as np
 from sklearn.metrics import f1_score
 
 class Evaluator:
-    '''Расчет точностей и работа с индексами In and Out of VOC'''
+    '''Calculating Accuracy and Working with In-Vocabulary and Out-of-Vocabulary Indices (Concepts in a thesaurus that don't appear in the training set).'''
     def __init__(self, train_conepts, test_concepts):
         self.train_conepts, self.test_concepts = np.array(train_conepts), np.array(test_concepts)
         self.get_in_out_of_voc_idx()
         
     def get_in_out_of_voc_idx(self):
-        mask_out_of_voc = np.in1d(self.test_concepts, self.train_conepts) #маска элементов первого array, которые есть во втором array
+        mask_out_of_voc = np.in1d(self.test_concepts, self.train_conepts) #create a mask for elements in the first array that exist in the second array
         self.in_voc_idx = np.nonzero(mask_out_of_voc)[0] 
         self.out_of_voc_idx = np.nonzero(~mask_out_of_voc)[0]
         

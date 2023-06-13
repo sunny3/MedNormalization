@@ -8,10 +8,10 @@ import numpy as np
 class MedNormDataset(torch.utils.data.Dataset):
     def __init__(self, X: List[str], y: List[str], CV: ConceptVectorizer, use_cuda = False):
         '''
-        Входные данные: 
-        X - список из фраз
-        y - список из концептов
-        CV - векторизатор для терминов медры с уже полученными вложениями
+        Input:
+        X - a list of phrases
+        y - a list of concepts
+        CV - vectorizer for Medra terms with thesaurus embeddings
         '''
         assert hasattr(CV, 'thesaurus_embeddings'), 'У объекта ConceptVectorizer должен быть вызван метод fit_transform()'
         self.CV = CV
@@ -25,16 +25,16 @@ class MedNormDataset(torch.utils.data.Dataset):
         
     def _vectorization(self, phrases_text, concepts):
         '''
-        Векторизует датасет. 
-        Фразам для нормализации будет соответствовать их представление для модели трансформера
-        Концептам их one-hot форма из словаря ConceptVectorizer'а
+        Vectorize dataset.
+        Phrase from the dataset -> output vector from mean pooling operation
+        Concept -> one-hot vector
         '''
-        #Переводим в one_hot концепты
+        #Convert concepts to one-hot encoding
         vectorized_concepts = []
         for concept in concepts:
             vectorized_concepts.append(self.CV.meddra_code_to_one_hot_emb(concept))
         vectorized_concepts = torch.tensor(vectorized_concepts, dtype=torch.float32)
-        #Переводим фразы в форму представления для модели-трансформера
+        #Convert phrases to transformer model representation
         vectorized_phrases_text = self.CV.tokenizer(phrases_text, padding=True, truncation=True, return_tensors='pt')
         return vectorized_phrases_text, vectorized_concepts
         
@@ -58,10 +58,9 @@ class MedNormDataset(torch.utils.data.Dataset):
 class MedNormContextDataset(MedNormDataset):
     def __init__(self, X: List[dict], y: List[str], CV: ConceptVectorizer, use_cuda = False):
         '''
-        Входные данные: 
-        X - список из предложений, предложение - словарь из ключей sentence и phrase_spans и phrase
-        y - список из концептов
-        CV - векторизатор для терминов медры с уже полученными вложениями
+        X - a list of sentences, where each sentence is a dictionary with keys "sentence", "phrase_spans", and "phrase"
+        y - a list of concepts
+        CV - vectorizer for Medra terms with pre-trained embeddings
         '''
         assert hasattr(CV, 'thesaurus_embeddings'), 'У объекта ConceptVectorizer должен быть вызван метод fit_transform()'
         self.CV = CV
@@ -77,17 +76,15 @@ class MedNormContextDataset(MedNormDataset):
         
         
     def _create_phrase_mask(self, offset_mapping, entity_spans):
-        '''Разметка предполагается разрывной'''
+        '''Entities markup may be discontinious'''
         if type(entity_spans)==dict:
             entity_spans = [[ent_s['begin'], ent_s['end']] for ent_s in entity_spans]
-        #Соберем все id токенов для каждого спана сущности
+        #Let's collect all token IDs for each entity span
         entity_token_ids = []
         for entity_span in entity_spans:
-            #может можно покрасивее, хз, взял у Вани
             for token_id, token_span in enumerate(offset_mapping):
                 if int(token_span[0]) >= int(entity_span[0]) and int(token_span[1]) <= int(entity_span[1]):
                     entity_token_ids.append(token_id)
-        #сделаем маску
         entity_mask = []
         for i in range(len(offset_mapping)):
             if i in entity_token_ids:
@@ -98,16 +95,16 @@ class MedNormContextDataset(MedNormDataset):
         
     def _vectorization(self, sentences_with_markup, concepts):
         '''
-        Векторизует датасет. 
-        Фразам для нормализации будет соответствовать их представление для модели трансформера
-        Концептам их one-hot форма из словаря ConceptVectorizer'а
+        Vectorize dataset.
+        Phrase from the dataset -> output vector from mean pooling operation
+        Concept -> one-hot vector
         '''
-        #Переводим в one_hot концепты
+        #Convert concepts to one-hot encoding
         vectorized_concepts = []
         for concept in concepts:
             vectorized_concepts.append(self.CV.meddra_code_to_one_hot_emb(concept))
         vectorized_concepts = torch.tensor(vectorized_concepts, dtype=torch.float32)
-        #Переводим фразы в форму представления для модели-трансформера
+        #Convert phrases to transformer model representation
         sentences_text = [s['sentence'] for s in sentences_with_markup]
         sentences_markup = [s['phrase_spans'] for s in sentences_with_markup]
         vectorized_sentences_text = self.CV.tokenizer(sentences_text, padding=True, \

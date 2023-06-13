@@ -13,13 +13,11 @@ import torch.nn as nn
 import torch
 
 class CADEC_SoTa_Optimizer:
-    '''
-    Пока что поиск оптимального batch_size и learning_rate
-    Пример сетки для поиска гиперпараметров, подаваемой в оптимизатор: {'lr': (0.0001, 0.001), 'batch_size': (16, 32, 64)}
-    epochs - на сколько эпох запускать сетку
-    max_evals - сколько итераций поиска гиперпараметров проводить (сколько раз запускать сетку)
-    verbose - печатать ли информацию
-    '''
+    '''For now, we are searching for the optimal batch_size and learning_rate.
+       An example of a grid for hyperparameter search that is fed to the optimizer is: {'lr': (0.0001, 0.001), 'batch_size': (16, 32, 64)}.
+       'epochs' is the number of epochs to run the grid for.
+       'max_evals' is the number of hyperparameter search iterations to conduct (how many times to run the grid).
+       'verbose' is whether to print out information.'''
     def __init__(self, model: CADEC_SoTa,  
                  train_data: MedNormDataset, 
                  test_data: MedNormDataset, 
@@ -59,11 +57,11 @@ class CADEC_SoTa_Optimizer:
         else:
             batch_size = int(args['batch_size'])
         lr = args['lr']
-        #выставляем одни и те же настройки для детерминированности
+        #for determinism
         np.random.seed(0)
         torch.manual_seed(0)
         
-        #каждый раз переинициалазируем объекты
+        #re-initialize objects
         model = deepcopy(self.initial_model)
         self.train_data_loader = torch.utils.data.DataLoader(self.train_data, batch_size=batch_size,
                                           shuffle=False, num_workers=0)
@@ -126,7 +124,7 @@ class CADEC_SoTa_Optimizer:
             self.best_hyperparams['batch_size'] = self.initial_hyperparam_space['batch_size'][choice_index]
         print('Best hyperparams: \n')
         print(self.best_hyperparams)
-        #для обнуления счетчика запусков
+        #to reset the run counter
         if self.verbose:
             self.counter=0
         return self.best_hyperparams

@@ -1,42 +1,48 @@
 from transformers import AutoModel, AutoTokenizer
 import torch
 from tqdm import tqdm
-from os.path import dirname, realpath
+import os
 import numpy as np
 from transformers.utils import logging
 from copy import copy
 from tqdm import tqdm
 import time
-#from transformers.utils.logging import enable_progress_bar, disable_progress_bar
-#def mean_pooling(model_output, attention_mask):
-#    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-#    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-#    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+import json
 
-
-# Sentences we want sentence embeddings for
-#sentences = ['This is an example sentence', 'Each sentence is converted']
-
-# Load model from HuggingFace Hub
-#tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/nli-roberta-large')
-#model = AutoModel.from_pretrained('sentence-transformers/nli-roberta-large')
-
-# Tokenize sentences
-#encoded_input = tokenizer(sentences, padding=True, truncation=True, return_tensors='pt')
-
-# Compute token embeddings
-#with torch.no_grad():
-#    model_output = model(**encoded_input)
-
-# Perform pooling. In this case, max pooling.
-#sentence_embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
-
-#print("Sentence embeddings:")
-#print(sentence_embeddings)
-
-class ConceptVectorizer:  
-    def __init__(self, model_path_or_model_obj, thesaurus_path, use_concept_less=False, use_model = True, use_cuda=False):
+class ConceptVectorizer:
+    @classmethod
+    def load_vectorizer(cls, path_to_load):
+        if not os.path.exists(path_to_load):
+            raise OSError('Neither dir nor file exists with path %s'%path_to_load)
+        if os.path.isdir(path_to_load):
+            conf_file = [os.path.join(path_to_load, file) for file in os.listdir(path_to_load) if file.find('config')>=0]
+            if len(conf_file)==0:
+                raise OSError('There is no config file of ConceptVectorizer in the directory')
+            elif len(conf_file)>1:
+                raise OSError('''There is few files with 'config' word in their names. 
+                                 Please choose one valid file from this list and move other''')
+            conf_file = conf_file[0]
+        else:
+            conf_file = path_to_load
+        with open(conf_file, 'r') as f:
+            config = json.load(f)
+        CV = cls(**config)
+        if CV.config['path_to_thesaurus_embeddings']:
+            CV.thesaurus_embeddings = torch.load(CV.config['path_to_thesaurus_embeddings'])
+        return CV
+        
+    def __init__(self, model_path_or_model_obj, thesaurus_path, 
+                 use_concept_less=False, use_model = True, path_to_thesaurus_embeddings=False, use_cuda=False):
         assert thesaurus_path.split('.')[-1] == 'asc'
+        self.config = {}
+        if type(model_path_or_model_obj)==str:
+            self.config['model_path_or_model_obj'] = model_path_or_model_obj
+        else:
+            self.config['model_path_or_model_obj'] = model_path_or_model_obj.config._name_or_path
+        self.config['thesaurus_path'] = os.path.abspath(thesaurus_path)
+        self.config['use_model'] = use_model
+        self.config['use_cuda'] = use_cuda
+        self.config['path_to_thesaurus_embeddings'] = path_to_thesaurus_embeddings
         self.tokenizer = AutoTokenizer.from_pretrained(model_path_or_model_obj)
         if use_model:
             self.model = AutoModel.from_pretrained(model_path_or_model_obj)
@@ -57,9 +63,6 @@ class ConceptVectorizer:
                 self.meddra_codes.append(meddra_line[0])
                 self.meddra_code_to_meddra_term[meddra_line[0]] = meddra_line[1]
                 self.meddra_term_to_meddra_code[meddra_line[1]] = meddra_line[0]
-                #для дебага
-                #if self.meddra_len==2:
-                #    break
                 
     def meddra_code_to_one_hot_emb(self, meddra_code):
         one_hot_emb = [0]*len(self.meddra_codes)
@@ -88,8 +91,10 @@ class ConceptVectorizer:
         if type(model_path_or_model_obj)==str:
             print('loading model...')
             self.model = AutoModel.from_pretrained(model_path_or_model_obj)
+            self.path_to_the_model = model_path_or_model_obj
         else:
             self.model = model_path_or_model_obj
+            self.path_to_the_model = model_path_or_model_obj.config._name_or_path
         print('new model loaded...')
         
     def decode_vec_to_meddra_code(self, vec):
@@ -103,6 +108,22 @@ class ConceptVectorizer:
     def decode_vec_to_meddra_term(self, vec):
         return self.meddra_code_to_meddra_term[self.decode_vec_to_meddra_code(vec)]
     
+    def save_vectorizer(self, path_to_save):
+        if os.path.isdir(path_to_save):
+            path_to_save = os.path.join(path_to_save, 'CV_config.json')
+        else:
+            filepath, extension = os.path.splitext(path_to_save)
+            #нужно, чтобы в названии было слово config
+            if filepath.find('config')<0:
+                path_to_save = filepath + '_config' + extension
+        if 'thesaurus_embeddings' in self.__dict__:
+            path_to_saved_embeddings = os.path.join(os.path.dirname(path_to_save), 'thesaurus_embeddings.pt')
+            torch.save(self.thesaurus_embeddings, path_to_saved_embeddings)
+            self.config['path_to_thesaurus_embeddings'] = path_to_saved_embeddings
+        else:
+            self.config['path_to_thesaurus_embeddings'] = False
+        with open(path_to_save, 'w') as f:
+            json.dump(self.config, f)
     
     def mean_pooling(self, token_embeddings, attention_mask):
         # = model_output[0] #First element of model_output contains all token embeddings
